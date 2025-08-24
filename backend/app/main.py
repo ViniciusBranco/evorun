@@ -1,13 +1,3 @@
-# import time
-# from contextlib import asynccontextmanager
-# from fastapi import FastAPI
-# from sqlalchemy.exc import OperationalError
-
-# from .api.v1.endpoints import users
-# from .database import engine
-# from . import models
-# from .api.v1.endpoints import users, login # Adiciona o import do login
-
 import asyncio
 import sys
 from contextlib import asynccontextmanager
