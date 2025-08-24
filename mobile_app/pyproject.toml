@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "mobile-app"
+version = "0.1.0"
+description = "Mobile App de corrida fitness gamificado EvoRun."
+authors = ["ViniciusBranco <viniciusbrancos@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+flet = "^0.28.3"
+httpx = "^0.28.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

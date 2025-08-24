@@ -1,0 +1,38 @@
+# Ambientes virtuais do Python
+.venv/
+venv/
+env/
+
+# Arquivos de cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Arquivos do Poetry
+poetry.lock
+
+# Arquivos de IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Arquivos de sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos de build e distribuição
+build/
+dist/
+*.egg-info/
+
+# Arquivos de log
+*.log
+
+# Dados do Docker (se o volume for mapeado localmente)
+postgres_data/
+
+# Arquivos de ambiente (caso venhamos a usar)
+.env
+.env.*
