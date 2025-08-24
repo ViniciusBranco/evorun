@@ -1,12 +1,41 @@
 import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict
 
-# Schema base com os campos comuns
+
+# --- Schemas de User (Base) ---
 class UserBase(BaseModel):
+    """
+    Schema base para User, usado em outros schemas.
+    """
     email: EmailStr
 
+# --- Schemas de Workout ---
+class WorkoutBase(BaseModel):
+    """
+    Schema base para Workout, usado em outros schemas.
+    """
+    distance_km: float
+    duration_minutes: int
+    elevation_level: Optional[int] = 0
 
+class WorkoutCreate(WorkoutBase):
+    """
+    Schema para a criação de um treino.
+    """
+    pass
+
+class Workout(WorkoutBase):
+    """
+    Schema para a leitura de um treino.
+    """
+    id: int
+    owner_id: int
+    workout_date: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+# --- Schema de User ---
 class UserCreate(UserBase):
     """
     Schema para a criação de um usuário.
@@ -33,6 +62,9 @@ class User(UserBase):
     weight_kg: Optional[int] = None
     height_cm: Optional[int] = None
     training_days_per_week: Optional[int] = None
+
+    # Relacionamento com treinos
+    workouts: List[Workout] = [] 
 
     # Configuração para permitir que o Pydantic leia os dados
     # a partir de um modelo SQLAlchemy (ORM)
@@ -71,8 +103,12 @@ class TokenData(BaseModel):
     email: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
+    """
+    Schema para a atualização do perfil do usuário.
+    """
     full_name: str
     age: int
     weight_kg: int
     height_cm: int
     training_days_per_week: int
+

@@ -2,7 +2,7 @@ import flet as ft
 import httpx
 
 API_URL = "http://127.0.0.1:8000"
-APPBAR_BGCOLOR = ft.Colors.BLUE_800
+APPBAR_BGCOLOR = ft.Colors.INDIGO_800
 
 class AppState:
     """Uma classe para armazenar o estado da aplicação."""
@@ -12,10 +12,11 @@ class AppState:
 
 async def main(page: ft.Page):
     """Função principal que constrói e gerencia a interface do aplicativo."""
-    page.title = "EvoRun"
+    page.title = "EvoRun Mobile"
     page.window_width = 400
     page.window_height = 850
     page.bgcolor = ft.Colors.BLUE_GREY_900
+    page.theme_mode = ft.ThemeMode.DARK
     
     app_state = AppState()
 
@@ -35,6 +36,7 @@ async def main(page: ft.Page):
     remember_me_checkbox = ft.Checkbox(label="Lembrar-me")
     error_text_login = ft.Text(value="", color=ft.Colors.RED_500)
     loading_indicator_login = ft.ProgressRing(visible=False)
+    versao = ft.Text("Versão 0.1.0", size=12, color=ft.Colors.BLUE_GREY_300)
 
     name_field = ft.TextField(label="Nome Completo", width=300)
     age_field = ft.TextField(label="Idade", width=300, keyboard_type=ft.KeyboardType.NUMBER)
@@ -109,8 +111,8 @@ async def main(page: ft.Page):
     # --- Definição dos Containers de Tela ---
     login_button = ft.ElevatedButton("Entrar", width=300, on_click=login_clicked, bgcolor=ft.Colors.INDIGO, color=ft.Colors.WHITE)
     login_container = ft.Column([
-        ft.Text("EvoRun", size=32, weight=ft.FontWeight.BOLD),
-        email_field, password_field, remember_me_checkbox, login_button, loading_indicator_login, error_text_login
+        ft.Text("EvoRun", size=32, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER),
+        email_field, password_field, remember_me_checkbox, login_button, loading_indicator_login, error_text_login, versao,
     ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, visible=True)
 
     onboarding_container = ft.Column([
@@ -128,11 +130,14 @@ async def main(page: ft.Page):
 
     def dashboard_view():
         user_name = app_state.user_profile.get("full_name", "Usuário")
-        dashboard_container.controls = [ft.Text(f"Bem-vindo, {user_name}!", size=24, weight=ft.FontWeight.BOLD)]
+        dashboard_container.controls = [
+            ft.Text(f"Bem-vindo, {user_name}!", size=24, weight=ft.FontWeight.BOLD),
+            ft.Text("Aqui estarão os resumos e último treino realizado.")
+        ]
 
     def profile_view():
         profile_container.controls = [
-            ft.Text("Perfil do Usuário", size=24, weight=ft.FontWeight.BOLD),
+            ft.Text("Perfil do Usuário", size=24, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.LEFT),
             ft.Text(f"Nome: {app_state.user_profile.get('full_name', '')}"),
             ft.Text(f"E-mail: {app_state.user_profile.get('email', '')}"),
             ft.Text(f"Idade: {app_state.user_profile.get('age', '')}"),
@@ -186,11 +191,10 @@ async def main(page: ft.Page):
 
     # --- Lógica de Inicialização ---
     page.add(
-        ft.AppBar(title=ft.Text("EvoRun"), bgcolor=APPBAR_BGCOLOR),
+        # ft.AppBar(title=ft.Text("Evolving Runner"), bgcolor=APPBAR_BGCOLOR),
         ft.Container(
             content=ft.Stack([login_container, onboarding_container, dashboard_container, profile_container, plans_container]),
             expand=True,
-            alignment=ft.alignment.center
         ),
         navigation_bar
     )

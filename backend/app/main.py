@@ -12,7 +12,7 @@ import asyncio
 import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from .api.v1.endpoints import users, login
+from .api.v1.endpoints import users, login, workouts
 from .database import engine
 from . import models
 
@@ -43,6 +43,7 @@ app = FastAPI(
 # Inclui os roteadores
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(login.router, prefix="/api/v1/login", tags=["login"])
+app.include_router(workouts.router, prefix="/api/v1/workouts", tags=["workouts"])
 # Todas as rotas em 'users.router', por exemplo, serão prefixadas com '/api/v1/users'
 
 # Define um endpoint para a rota raiz ("/")

@@ -116,3 +116,20 @@ def delete_user(db: Session, user_id: int):
         db.commit()
     return db_user
 
+# --- Funções CRUD para Workouts ---
+
+def create_user_workout(db: Session, workout: schemas.WorkoutCreate, user_id: int):
+    """
+    Cria um novo treino para um usuário específico.
+    """
+    db_workout = models.Workout(**workout.model_dump(), owner_id=user_id)
+    db.add(db_workout)
+    db.commit()
+    db.refresh(db_workout)
+    return db_workout
+
+def get_workouts_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
+    """
+    Busca todos os treinos de um usuário específico com paginação.
+    """
+    return db.query(models.Workout).filter(models.Workout.owner_id == user_id).offset(skip).limit(limit).all()
