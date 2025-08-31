@@ -133,3 +133,29 @@ def get_workouts_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 
     Busca todos os treinos de um usuário específico com paginação.
     """
     return db.query(models.Workout).filter(models.Workout.owner_id == user_id).offset(skip).limit(limit).all()
+
+def get_workout(db: Session, workout_id: int):
+    """
+    Busca um único treino pelo seu ID.
+    """
+    return db.query(models.Workout).filter(models.Workout.id == workout_id).first()
+
+def update_workout(db: Session, db_workout: models.Workout, workout_in: schemas.WorkoutUpdate):
+    """
+    Atualiza um treino com os dados fornecidos.
+    """
+    update_data = workout_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_workout, key, value)
+    db.add(db_workout)
+    db.commit()
+    db.refresh(db_workout)
+    return db_workout
+
+def delete_workout(db: Session, db_workout: models.Workout):
+    """
+    Exclui um treino do banco de dados.
+    """
+    db.delete(db_workout)
+    db.commit()
+    return db_workout

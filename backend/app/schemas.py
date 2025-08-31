@@ -112,3 +112,8 @@ class ProfileUpdate(BaseModel):
     height_cm: int
     training_days_per_week: int
 
+class WorkoutUpdate(WorkoutBase):
+    distance_km: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    elevation_level: Optional[int] = None
+
