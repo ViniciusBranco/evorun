@@ -25,6 +25,46 @@ class WorkoutCreate(WorkoutBase):
     """
     pass
 
+# --- Schema de User ---
+class UserCreate(UserBase):
+    """
+    Schema para a criação de um usuário.
+    """
+    password: str
+
+# --- NOVOS SCHEMAS PARA TOKENS ---
+class Token(BaseModel):
+    """
+    Schema para a resposta do token de acesso.
+    """
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    """
+    Schema para os dados contidos dentro de um JWT.
+    """
+    email: Optional[str] = None
+
+class ProfileUpdate(BaseModel):
+    """
+    Schema para a atualização do perfil do usuário.
+    """
+    full_name: str
+    age: int
+    weight_kg: int
+    height_cm: int
+    training_days_per_week: int
+
+class WorkoutUpdate(WorkoutBase):
+    """
+    Schema para a atualização de um treino.
+    """
+    distance_km: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    elevation_level: Optional[int] = None
+    workout_date: Optional[datetime.datetime] = None # <-- CAMPO ADICIONADO
+
 class Workout(WorkoutBase):
     """
     Schema para a leitura de um treino.
@@ -34,14 +74,6 @@ class Workout(WorkoutBase):
     workout_date: datetime.datetime
 
     model_config = ConfigDict(from_attributes=True)
-
-# --- Schema de User ---
-class UserCreate(UserBase):
-    """
-    Schema para a criação de um usuário.
-    """
-    password: str
-
 
 class User(UserBase):
     """
@@ -86,34 +118,3 @@ class UserUpdate(BaseModel):
     weight_kg: Optional[int] = None
     height_cm: Optional[int] = None
     training_days_per_week: Optional[int] = None
-
-# --- NOVOS SCHEMAS PARA TOKENS ---
-
-class Token(BaseModel):
-    """
-    Schema para a resposta do token de acesso.
-    """
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    """
-    Schema para os dados contidos dentro de um JWT.
-    """
-    email: Optional[str] = None
-
-class ProfileUpdate(BaseModel):
-    """
-    Schema para a atualização do perfil do usuário.
-    """
-    full_name: str
-    age: int
-    weight_kg: int
-    height_cm: int
-    training_days_per_week: int
-
-class WorkoutUpdate(WorkoutBase):
-    distance_km: Optional[float] = None
-    duration_minutes: Optional[int] = None
-    elevation_level: Optional[int] = None
-

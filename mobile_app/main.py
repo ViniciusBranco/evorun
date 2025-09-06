@@ -3,12 +3,12 @@ import httpx
 import sqlite3
 import datetime
 from functools import partial
+import calendar
 
 # Imports para o gráfico
 import matplotlib
 import matplotlib.pyplot as plt
 from flet.matplotlib_chart import MatplotlibChart
-import matplotlib.dates as mdates
 
 # Configura o matplotlib para não usar um backend de UI interativo, essencial para o Flet
 matplotlib.use("svg")
@@ -99,6 +99,7 @@ class AppState:
         self.token = None
         self.user_profile = {}
         self.editing_workout_id = None
+        self.selected_calendar_date = datetime.date.today()
 
 async def main(page: ft.Page):
     """Função principal que constrói e gerencia a interface do aplicativo."""
@@ -121,7 +122,6 @@ async def main(page: ft.Page):
             con.row_factory = sqlite3.Row
             cur = con.cursor()
             
-            # 1. Sincronizar Perfil
             cur.execute("SELECT * FROM user_profile WHERE email = ? AND synced = 0", (app_state.user_profile['email'],))
             unsynced_profile = cur.fetchone()
             if unsynced_profile:
@@ -136,14 +136,18 @@ async def main(page: ft.Page):
                 except httpx.ConnectError:
                     print("Não foi possível sincronizar o perfil. Backend offline.")
 
-            # 2. Sincronizar Treinos (Criação e Edição)
             cur.execute("SELECT * FROM workouts WHERE user_email = ? AND synced = 0 AND to_be_deleted = 0", (app_state.user_profile['email'],))
             unsynced_workouts = cur.fetchall()
             if unsynced_workouts:
                 print(f"Enviando {len(unsynced_workouts)} treinos não sincronizados...")
                 for workout_row in unsynced_workouts:
                     workout = dict(workout_row)
-                    workout_data = {"distance_km": workout['distance_km'], "duration_minutes": workout['duration_minutes'], "elevation_level": workout['elevation_level']}
+                    workout_data = {
+                        "distance_km": workout['distance_km'], 
+                        "duration_minutes": workout['duration_minutes'], 
+                        "elevation_level": workout['elevation_level'],
+                        "workout_date": workout['workout_date']
+                    }
                     try:
                         endpoint = f"/api/v1/workouts/{workout['api_id']}" if workout.get('api_id') else "/api/v1/workouts/"
                         method = "PUT" if workout.get('api_id') else "POST"
@@ -157,7 +161,6 @@ async def main(page: ft.Page):
                         print("Não foi possível sincronizar treinos. Backend offline.")
                         break
             
-            # 3. Sincronizar Exclusões de Treinos
             cur.execute("SELECT * FROM workouts WHERE user_email = ? AND to_be_deleted = 1", (app_state.user_profile['email'],))
             workouts_to_delete = cur.fetchall()
             if workouts_to_delete:
@@ -285,30 +288,50 @@ async def main(page: ft.Page):
     dashboard_container = ft.Column(visible=False, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     profile_container = ft.Column(visible=False, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     edit_profile_container = ft.Column(visible=False, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
-    workouts_container = ft.Column(visible=False, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+    workouts_container = ft.Column(visible=False, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=20)
     add_workout_container = ft.Column(visible=False, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     edit_workout_container = ft.Column(visible=False, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
     # --- Funções de Construção de Views ---
     async def build_dashboard_view():
-        """Constrói o conteúdo da tela de dashboard, incluindo o gráfico de evolução."""
+        """Constrói o conteúdo da tela de dashboard, incluindo os gráficos de evolução."""
         user_name = app_state.user_profile.get("full_name", "Usuário")
         
-        chart_container = ft.Container(
-            padding=10, border_radius=8,
-            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.WHITE10),
-            expand=True, alignment=ft.alignment.center
-        )
+        velocity_chart = ft.Container(expand=True, alignment=ft.alignment.center)
+        distance_chart = ft.Container(expand=True, alignment=ft.alignment.center)
+        pace_chart = ft.Container(expand=True, alignment=ft.alignment.center)
 
-        async def update_chart(filter_days: int):
-            """Busca dados, filtra e atualiza o conteúdo do gráfico."""
+        def create_chart(title, y_label, x_labels, y_data):
+            """Função auxiliar para criar um gráfico Matplotlib estilizado."""
+            plt.close('all')
+            fig, ax = plt.subplots(figsize=(6, 4))
+            x_axis = range(len(x_labels))
+            ax.plot(x_axis, y_data, marker='o', linestyle='-', color='#8561c5')
+            
+            ax.set_xticks(x_axis)
+            ax.set_xticklabels(x_labels, rotation=45, ha="right")
+            
+            fig.patch.set_facecolor('#202429')
+            ax.set_facecolor('#292e35')
+            ax.tick_params(axis='x', colors='white')
+            ax.tick_params(axis='y', colors='white')
+            ax.spines['bottom'].set_color('white')
+            ax.spines['left'].set_color('white')
+            ax.spines['top'].set_color('none')
+            ax.spines['right'].set_color('none')
+            
+            ax.set_title(title, color="white")
+            ax.set_ylabel(y_label, color="white")
+            ax.grid(True, linestyle='--', linewidth=0.5, color='grey')
+            plt.tight_layout()
+            return MatplotlibChart(fig, expand=True)
+
+        async def update_all_charts(filter_days: int):
+            """Busca dados, filtra e atualiza o conteúdo de todos os gráficos."""
             with sqlite3.connect("evorun_local.db") as con:
                 con.row_factory = sqlite3.Row
                 cur = con.cursor()
-                cur.execute(
-                    "SELECT * FROM workouts WHERE user_email = ? AND to_be_deleted = 0 ORDER BY workout_date ASC",
-                    (app_state.user_profile['email'],)
-                )
+                cur.execute("SELECT * FROM workouts WHERE user_email = ? AND to_be_deleted = 0 ORDER BY workout_date ASC", (app_state.user_profile['email'],))
                 all_workouts = [dict(row) for row in cur.fetchall()]
 
             now = datetime.datetime.now()
@@ -316,60 +339,43 @@ async def main(page: ft.Page):
             workouts = [w for w in all_workouts if datetime.datetime.fromisoformat(w['workout_date']) >= start_date]
 
             if len(workouts) < 2:
-                chart_container.content = ft.Text("Registre pelo menos dois treinos neste período para ver o gráfico!",
-                                                  italic=True, color=ft.Colors.BLUE_GREY_300)
+                no_data_text = ft.Text("Registre pelo menos dois treinos neste período para ver os gráficos!", italic=True, color=ft.Colors.BLUE_GREY_300)
+                velocity_chart.content = distance_chart.content = pace_chart.content = no_data_text
             else:
                 dates = [datetime.datetime.fromisoformat(w['workout_date']) for w in workouts]
+                x_labels = [d.strftime('%d/%m') for d in dates]
                 distances = [w['distance_km'] for w in workouts]
                 durations = [w['duration_minutes'] for w in workouts]
+                
                 velocities = [d / (t / 60) if t > 0 else 0 for d, t in zip(distances, durations)]
-
-                fig, ax = plt.subplots(figsize=(6, 4))
-                ax.plot(dates, velocities, marker='o', linestyle='-', color='#8561c5')
+                paces = [t / d if d > 0 else 0 for d, t in zip(durations, distances)]
                 
-                fig.patch.set_facecolor('#202429')
-                ax.set_facecolor('#292e35')
-                ax.tick_params(axis='x', colors='white', labelrotation=45)
-                ax.tick_params(axis='y', colors='white')
-                ax.spines['bottom'].set_color('white')
-                ax.spines['left'].set_color('white')
-                ax.spines['top'].set_color('none')
-                ax.spines['right'].set_color('none')
-                
-                ax.set_title("Evolução da Velocidade", color="white")
-                ax.set_ylabel("Velocidade (km/h)", color="white")
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m'))
-                ax.grid(True, linestyle='--', linewidth=0.5, color='grey')
-                plt.tight_layout()
-
-                chart_container.content = MatplotlibChart(fig, expand=True)
+                velocity_chart.content = create_chart("Evolução da Velocidade", "Velocidade (km/h)", x_labels, velocities)
+                distance_chart.content = create_chart("Evolução da Distância", "Distância (km)", x_labels, distances)
+                pace_chart.content = create_chart("Evolução do Pace", "Pace (min/km)", x_labels, paces)
             
             page.update()
 
         async def filter_changed(e):
             """Callback para quando o filtro de período é alterado."""
             period_map = {"7D": 7, "30D": 30, "90D": 90, "ANO": 365}
-            await update_chart(period_map[e.data])
+            clean_key = e.data.strip('[]"')
+            await update_all_charts(period_map[clean_key])
 
         filter_buttons = ft.SegmentedButton(
             on_change=filter_changed,
             selected={"30D"},
-            segments=[
-                ft.Segment(value="7D", label=ft.Text("7d")),
-                ft.Segment(value="30D", label=ft.Text("30d")),
-                ft.Segment(value="90D", label=ft.Text("90d")),
-                ft.Segment(value="ANO", label=ft.Text("Ano")),
-            ]
+            segments=[ft.Segment(value="7D", label=ft.Text("7d")), ft.Segment(value="30D", label=ft.Text("30d")), ft.Segment(value="90D", label=ft.Text("90d")), ft.Segment(value="ANO", label=ft.Text("Ano"))]
         )
         
-        dashboard_container.controls = [
-            ft.Text(f"Olá, {user_name}!", size=24, weight=ft.FontWeight.BOLD),
-            ft.Text("Sua evolução recente:"),
-            filter_buttons,
-            chart_container
-        ]
-        
-        await update_chart(30)
+        tabs = ft.Tabs(
+            selected_index=0, animation_duration=300, tab_alignment=ft.TabAlignment.CENTER,
+            tabs=[ft.Tab(text="Velocidade", content=velocity_chart), ft.Tab(text="Distância", content=distance_chart), ft.Tab(text="Pace", content=pace_chart)],
+            expand=1,
+        )
+
+        dashboard_container.controls = [ft.Text(f"Olá, {user_name}!", size=24, weight=ft.FontWeight.BOLD), ft.Text("Sua evolução recente:"), filter_buttons, tabs]
+        await update_all_charts(30)
 
     def build_profile_view():
         """Constrói o conteúdo da tela de perfil."""
@@ -457,17 +463,40 @@ async def main(page: ft.Page):
 
     def build_edit_workout_view(workout_data: dict):
         """Constrói o conteúdo da tela de edição de treino."""
+        date_button_text = ft.Text(datetime.datetime.fromisoformat(workout_data['workout_date']).strftime('%d/%m/%Y'))
+        time_button_text = ft.Text(datetime.datetime.fromisoformat(workout_data['workout_date']).strftime('%H:%M'))
+        
+        date_picker = ft.DatePicker()
+        time_picker = ft.TimePicker()
+        page.overlay.extend([date_picker, time_picker])
+        
+        def handle_date_change(e):
+            date_button_text.value = date_picker.value.strftime('%d/%m/%Y')
+            page.update()
+
+        def handle_time_change(e):
+            time_button_text.value = time_picker.value.strftime('%H:%M')
+            page.update()
+            
+        date_picker.on_change = handle_date_change
+        time_picker.on_change = handle_time_change
+
         distance_edit_field = ft.TextField(label="Distância (km)", value=str(workout_data.get('distance_km')), width=300, keyboard_type=ft.KeyboardType.NUMBER)
         duration_edit_field = ft.TextField(label="Duração (minutos)", value=str(workout_data.get('duration_minutes')), width=300, keyboard_type=ft.KeyboardType.NUMBER)
         elevation_edit_field = ft.TextField(label="Nível de Elevação", value=str(workout_data.get('elevation_level')), width=300, keyboard_type=ft.KeyboardType.NUMBER)
 
         async def update_workout_clicked(e):
             if app_state.token: await sync_local_changes_to_backend()
-            updated_data = {"distance_km": float(distance_edit_field.value), "duration_minutes": int(duration_edit_field.value), "elevation_level": int(elevation_edit_field.value)}
+            
+            new_date = datetime.datetime.strptime(date_button_text.value, '%d/%m/%Y').date()
+            new_time = datetime.datetime.strptime(time_button_text.value, '%H:%M').time()
+            new_datetime = datetime.datetime.combine(new_date, new_time).isoformat()
+
+            updated_data = {"distance_km": float(distance_edit_field.value), "duration_minutes": int(duration_edit_field.value), "elevation_level": int(elevation_edit_field.value), "workout_date": new_datetime}
             workout_id = app_state.editing_workout_id
             with sqlite3.connect("evorun_local.db") as con:
                 cur = con.cursor()
-                cur.execute("UPDATE workouts SET distance_km = ?, duration_minutes = ?, elevation_level = ?, synced = 0 WHERE id = ?", (updated_data['distance_km'], updated_data['duration_minutes'], updated_data['elevation_level'], workout_id))
+                cur.execute("UPDATE workouts SET distance_km = ?, duration_minutes = ?, elevation_level = ?, workout_date = ?, synced = 0 WHERE id = ?", (updated_data['distance_km'], updated_data['duration_minutes'], updated_data['elevation_level'], updated_data['workout_date'], workout_id))
                 con.commit()
             
             try:
@@ -488,11 +517,24 @@ async def main(page: ft.Page):
             await show_view(workouts_container)
         
         async def go_to_workouts_view(e): await show_view(workouts_container)
-        edit_workout_container.controls = [distance_edit_field, duration_edit_field, elevation_edit_field, ft.ElevatedButton("Salvar Alterações", on_click=update_workout_clicked), ft.ElevatedButton("Cancelar", on_click=go_to_workouts_view)]
+        
+        def open_date_picker(e):
+            page.open(date_picker)
+
+        def open_time_picker(e):
+            page.open(time_picker)
+
+        edit_workout_container.controls = [
+            ft.Row([ft.ElevatedButton(content=date_button_text, on_click=open_date_picker), ft.ElevatedButton(content=time_button_text, on_click=open_time_picker)], alignment=ft.MainAxisAlignment.CENTER),
+            distance_edit_field, duration_edit_field, elevation_edit_field, 
+            ft.ElevatedButton("Salvar Alterações", on_click=update_workout_clicked), 
+            ft.ElevatedButton("Cancelar", on_click=go_to_workouts_view)
+        ]
 
     async def build_workouts_view():
-        """Constrói o conteúdo da tela de treinos."""
-        workouts_list = ft.ListView(spacing=10, expand=True)
+        """Constrói o conteúdo da tela de treinos com o novo layout."""
+        workouts_list_column = ft.Column(spacing=10, expand=True, scroll=ft.ScrollMode.AUTO)
+        
         async def go_to_add_workout(e): await show_view(add_workout_container)
         async def go_to_edit_workout(e):
             workout = e.control.data
@@ -501,37 +543,109 @@ async def main(page: ft.Page):
             await show_view(edit_workout_container)
 
         def open_delete_dialog(e):
-            """Constrói e abre o diálogo de confirmação."""
             workout_to_delete = e.control.data
             delete_bs.data = {"local_id": workout_to_delete.get("id")}
-            
-            delete_bs.content = ft.Container(
-                ft.Column([
-                    ft.Text("Confirmar Exclusão", size=18, weight=ft.FontWeight.BOLD),
-                    ft.Text("Você tem certeza de que deseja excluir este treino?"),
-                    ft.Row([
-                        ft.TextButton("Não", on_click=close_bs),
-                        ft.FilledButton("Sim, Excluir", on_click=delete_workout_confirmed),
-                    ], alignment=ft.MainAxisAlignment.END),
-                ], tight=True),
-                padding=20,
-            )
+            delete_bs.content = ft.Container(ft.Column([ft.Text("Confirmar Exclusão", size=18, weight=ft.FontWeight.BOLD), ft.Text("Você tem certeza de que deseja excluir este treino?"), ft.Row([ft.TextButton("Não", on_click=close_bs), ft.FilledButton("Sim, Excluir", on_click=delete_workout_confirmed)], alignment=ft.MainAxisAlignment.END)], tight=True), padding=20)
             delete_bs.open = True
             page.update()
 
-        workouts_container.controls = [ft.FilledButton("Novo Treino", icon="add", on_click=go_to_add_workout), workouts_list]
-        workouts_list.controls.clear()
-        
-        with sqlite3.connect("evorun_local.db") as con:
-            con.row_factory = sqlite3.Row
-            cur = con.cursor()
-            cur.execute("SELECT * FROM workouts WHERE user_email = ? AND to_be_deleted = 0 ORDER BY workout_date DESC", (app_state.user_profile['email'],))
-            local_workouts = cur.fetchall()
+        def build_workout_list(selected_date: datetime.date):
+            """Filtra e constrói a lista de treinos para uma data específica."""
+            workouts_list_column.controls.clear()
+            with sqlite3.connect("evorun_local.db") as con:
+                con.row_factory = sqlite3.Row
+                cur = con.cursor()
+                cur.execute("SELECT * FROM workouts WHERE user_email = ? AND to_be_deleted = 0 ORDER BY workout_date DESC", (app_state.user_profile['email'],))
+                all_workouts = [dict(row) for row in cur.fetchall()]
+            
+            workouts_in_day = [w for w in all_workouts if datetime.datetime.fromisoformat(w['workout_date']).date() == selected_date]
 
-        for workout in local_workouts:
-            workout_dict = dict(workout)
-            workouts_list.controls.append(ft.Row([ft.Text(f"{datetime.datetime.fromisoformat(workout_dict['workout_date']).strftime('%d/%m/%Y')} - {workout_dict['distance_km']} km em {workout_dict['duration_minutes']} min"), ft.Row([ft.IconButton(ft.Icons.EDIT, data=workout_dict, on_click=go_to_edit_workout), ft.IconButton(ft.Icons.DELETE_OUTLINE, data=workout_dict, on_click=open_delete_dialog, icon_color=ft.Colors.RED_400)])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
-        page.update()
+            if not workouts_in_day:
+                workouts_list_column.controls.append(ft.Text("Nenhum treino registrado neste dia.", italic=True, color=ft.Colors.BLUE_GREY_300, text_align=ft.TextAlign.CENTER))
+            else:
+                for workout in workouts_in_day:
+                    workouts_list_column.controls.append(
+                        ft.Container(
+                            ft.Row([
+                                ft.Column([ft.Text(f"{datetime.datetime.fromisoformat(workout['workout_date']).strftime('%H:%M')}", weight=ft.FontWeight.BOLD), ft.Text("Corrida", size=12, color=ft.Colors.GREEN_400)]),
+                                ft.Column([ft.Text(f"{workout['duration_minutes']} min"), ft.Text("Duração", size=12, color=ft.Colors.BLUE_GREY_300)], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                                ft.Column([ft.Text(f"{workout['distance_km']} km"), ft.Text("Distância", size=12, color=ft.Colors.BLUE_GREY_300)], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                                ft.Row([ft.IconButton(ft.Icons.EDIT, data=workout, on_click=go_to_edit_workout), ft.IconButton(ft.Icons.DELETE_OUTLINE, data=workout, on_click=open_delete_dialog, icon_color=ft.Colors.RED_400)])
+                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            padding=15, border_radius=8, bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.WHITE10)
+                        )
+                    )
+            page.update()
+        
+        calendar_view = ft.Column()
+        
+        def update_calendar(year, month):
+            calendar_view.controls.clear()
+            month_name = datetime.date(year, month, 1).strftime('%B %Y')
+            
+            def change_month(e):
+                new_month = month + e.control.data
+                new_year = year
+                if new_month > 12: new_month, new_year = 1, year + 1
+                elif new_month < 1: new_month, new_year = 12, year - 1
+                update_calendar(new_year, new_month)
+                
+            def select_date(e):
+                app_state.selected_calendar_date = e.control.data
+                update_calendar(year, month) # Rebuid calendar to show selection
+                build_workout_list(app_state.selected_calendar_date)
+
+            calendar_view.controls.append(
+                ft.Row([
+                    ft.IconButton(ft.Icons.CHEVRON_LEFT, on_click=change_month, data=-1),
+                    ft.Text(month_name, expand=True, text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.BOLD),
+                    ft.IconButton(ft.Icons.CHEVRON_RIGHT, on_click=change_month, data=1)
+                ])
+            )
+
+            with sqlite3.connect("evorun_local.db") as con:
+                cur = con.cursor()
+                cur.execute("SELECT DISTINCT strftime('%Y-%m-%d', workout_date) FROM workouts WHERE user_email = ? AND to_be_deleted = 0", (app_state.user_profile['email'],))
+                workout_days = {datetime.datetime.strptime(row[0], '%Y-%m-%d').date() for row in cur.fetchall()}
+
+            month_matrix = calendar.monthcalendar(year, month)
+            for week in month_matrix:
+                week_row = ft.Row(alignment=ft.MainAxisAlignment.SPACE_AROUND)
+                for day in week:
+                    if day == 0:
+                        week_row.controls.append(ft.Container(width=32, height=32))
+                    else:
+                        date_obj = datetime.date(year, month, day)
+                        is_selected = date_obj == app_state.selected_calendar_date
+                        has_workout = date_obj in workout_days
+                        
+                        day_button = ft.Container(
+                            content=ft.Text(str(day), color=ft.Colors.WHITE if is_selected else ft.Colors.BLACK, weight=ft.FontWeight.BOLD),
+                            width=32, height=32,
+                            alignment=ft.alignment.center,
+                            border_radius=16,
+                            bgcolor=ft.Colors.INDIGO_400 if is_selected else (ft.Colors.GREEN_800 if has_workout else ft.Colors.WHITE10),
+                            on_click=select_date,
+                            data=date_obj
+                        )
+                        week_row.controls.append(day_button)
+                calendar_view.controls.append(week_row)
+            page.update()
+
+        workouts_container.controls = [
+            ft.FilledButton("Novo Treino", icon="add", on_click=go_to_add_workout), 
+            ft.Container(
+                content=ft.Column([
+                    calendar_view,
+                    ft.Divider(),
+                    workouts_list_column
+                ], expand=True, scroll=ft.ScrollMode.AUTO), # <-- CORREÇÃO DE ROLAGEM
+                padding=10, border_radius=8, expand=True
+            )
+        ]
+        
+        update_calendar(app_state.selected_calendar_date.year, app_state.selected_calendar_date.month)
+        build_workout_list(app_state.selected_calendar_date)
 
     # --- Gerenciador de Views ---
     async def show_view(view_to_show):
