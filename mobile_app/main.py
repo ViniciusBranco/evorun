@@ -2,7 +2,16 @@ import flet as ft
 import httpx
 import sqlite3
 import datetime
+from functools import partial
 
+# Imports para o gráfico
+import matplotlib
+import matplotlib.pyplot as plt
+from flet.matplotlib_chart import MatplotlibChart
+import matplotlib.dates as mdates
+
+# Configura o matplotlib para não usar um backend de UI interativo, essencial para o Flet
+matplotlib.use("svg")
 
 API_URL = "http://127.0.0.1:8000"
 APPBAR_BGCOLOR = ft.Colors.BLUE_800
@@ -103,9 +112,9 @@ async def main(page: ft.Page):
     # --- Lógica de Sincronização ---
     async def sync_local_changes_to_backend():
         """Verifica alterações locais e as envia para o backend."""
-        print("DEBUG: Iniciando sync_local_changes_to_backend...")
+        print("Verificando alterações locais para sincronizar...")
         if not app_state.token or not app_state.user_profile.get('email'):
-            print("DEBUG: Sincronização abortada: sem token ou perfil de usuário.")
+            print("Sincronização abortada: sem token ou perfil de usuário.")
             return
 
         with sqlite3.connect("evorun_local.db") as con:
@@ -117,21 +126,21 @@ async def main(page: ft.Page):
             unsynced_profile = cur.fetchone()
             if unsynced_profile:
                 profile_data = dict(unsynced_profile)
-                print("DEBUG: Enviando perfil não sincronizado...")
+                print("Enviando perfil não sincronizado...")
                 try:
                     payload = {k: v for k, v in profile_data.items() if k not in ['email', 'synced']}
                     response = await api_call("PUT", "/api/v1/users/me/profile", json=payload)
                     if response.status_code == 200:
                         save_profile_locally(response.json(), synced=1)
-                        print("DEBUG: Perfil sincronizado com sucesso.")
+                        print("Perfil sincronizado com sucesso.")
                 except httpx.ConnectError:
-                    print("DEBUG: Não foi possível sincronizar o perfil. Backend offline.")
+                    print("Não foi possível sincronizar o perfil. Backend offline.")
 
             # 2. Sincronizar Treinos (Criação e Edição)
             cur.execute("SELECT * FROM workouts WHERE user_email = ? AND synced = 0 AND to_be_deleted = 0", (app_state.user_profile['email'],))
             unsynced_workouts = cur.fetchall()
             if unsynced_workouts:
-                print(f"DEBUG: Enviando {len(unsynced_workouts)} treinos não sincronizados...")
+                print(f"Enviando {len(unsynced_workouts)} treinos não sincronizados...")
                 for workout_row in unsynced_workouts:
                     workout = dict(workout_row)
                     workout_data = {"distance_km": workout['distance_km'], "duration_minutes": workout['duration_minutes'], "elevation_level": workout['elevation_level']}
@@ -143,16 +152,16 @@ async def main(page: ft.Page):
                             api_id = response.json().get("id")
                             cur.execute("UPDATE workouts SET synced = 1, api_id = ? WHERE id = ?", (api_id, workout['id']))
                             con.commit()
-                            print(f"DEBUG: Treino local ID {workout['id']} sincronizado.")
+                            print(f"Treino local ID {workout['id']} sincronizado.")
                     except httpx.ConnectError:
-                        print("DEBUG: Não foi possível sincronizar treinos. Backend offline.")
+                        print("Não foi possível sincronizar treinos. Backend offline.")
                         break
             
             # 3. Sincronizar Exclusões de Treinos
             cur.execute("SELECT * FROM workouts WHERE user_email = ? AND to_be_deleted = 1", (app_state.user_profile['email'],))
             workouts_to_delete = cur.fetchall()
             if workouts_to_delete:
-                print(f"DEBUG: Enviando {len(workouts_to_delete)} exclusões de treinos...")
+                print(f"Enviando {len(workouts_to_delete)} exclusões de treinos...")
                 for workout_row in workouts_to_delete:
                     workout = dict(workout_row)
                     if workout.get('api_id'):
@@ -161,14 +170,14 @@ async def main(page: ft.Page):
                             if response.status_code in [204, 404]:
                                 cur.execute("DELETE FROM workouts WHERE id = ?", (workout['id'],))
                                 con.commit()
-                                print(f"DEBUG: Treino ID {workout['id']} excluído permanentemente.")
+                                print(f"Treino ID {workout['id']} excluído permanentemente.")
                         except httpx.ConnectError:
-                            print("DEBUG: Não foi possível sincronizar exclusões. Backend offline.")
+                            print("Não foi possível sincronizar exclusões. Backend offline.")
                             break
                     else:
                         cur.execute("DELETE FROM workouts WHERE id = ?", (workout['id'],))
                         con.commit()
-                        print(f"DEBUG: Treino local ID {workout['id']} (nunca sincronizado) excluído permanentemente.")
+                        print(f"Treino local ID {workout['id']} (nunca sincronizado) excluído permanentemente.")
 
     # --- Lógica de API ---
     async def api_call(method, endpoint, data=None, json=None, headers=None):
@@ -281,10 +290,86 @@ async def main(page: ft.Page):
     edit_workout_container = ft.Column(visible=False, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
     # --- Funções de Construção de Views ---
-    def build_dashboard_view():
-        """Constrói o conteúdo da tela de dashboard."""
+    async def build_dashboard_view():
+        """Constrói o conteúdo da tela de dashboard, incluindo o gráfico de evolução."""
         user_name = app_state.user_profile.get("full_name", "Usuário")
-        dashboard_container.controls = [ft.Text(f"Bem-vindo, {user_name}!", size=24, weight=ft.FontWeight.BOLD)]
+        
+        chart_container = ft.Container(
+            padding=10, border_radius=8,
+            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.WHITE10),
+            expand=True, alignment=ft.alignment.center
+        )
+
+        async def update_chart(filter_days: int):
+            """Busca dados, filtra e atualiza o conteúdo do gráfico."""
+            with sqlite3.connect("evorun_local.db") as con:
+                con.row_factory = sqlite3.Row
+                cur = con.cursor()
+                cur.execute(
+                    "SELECT * FROM workouts WHERE user_email = ? AND to_be_deleted = 0 ORDER BY workout_date ASC",
+                    (app_state.user_profile['email'],)
+                )
+                all_workouts = [dict(row) for row in cur.fetchall()]
+
+            now = datetime.datetime.now()
+            start_date = now - datetime.timedelta(days=filter_days)
+            workouts = [w for w in all_workouts if datetime.datetime.fromisoformat(w['workout_date']) >= start_date]
+
+            if len(workouts) < 2:
+                chart_container.content = ft.Text("Registre pelo menos dois treinos neste período para ver o gráfico!",
+                                                  italic=True, color=ft.Colors.BLUE_GREY_300)
+            else:
+                dates = [datetime.datetime.fromisoformat(w['workout_date']) for w in workouts]
+                distances = [w['distance_km'] for w in workouts]
+                durations = [w['duration_minutes'] for w in workouts]
+                velocities = [d / (t / 60) if t > 0 else 0 for d, t in zip(distances, durations)]
+
+                fig, ax = plt.subplots(figsize=(6, 4))
+                ax.plot(dates, velocities, marker='o', linestyle='-', color='#8561c5')
+                
+                fig.patch.set_facecolor('#202429')
+                ax.set_facecolor('#292e35')
+                ax.tick_params(axis='x', colors='white', labelrotation=45)
+                ax.tick_params(axis='y', colors='white')
+                ax.spines['bottom'].set_color('white')
+                ax.spines['left'].set_color('white')
+                ax.spines['top'].set_color('none')
+                ax.spines['right'].set_color('none')
+                
+                ax.set_title("Evolução da Velocidade", color="white")
+                ax.set_ylabel("Velocidade (km/h)", color="white")
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m'))
+                ax.grid(True, linestyle='--', linewidth=0.5, color='grey')
+                plt.tight_layout()
+
+                chart_container.content = MatplotlibChart(fig, expand=True)
+            
+            page.update()
+
+        async def filter_changed(e):
+            """Callback para quando o filtro de período é alterado."""
+            period_map = {"7D": 7, "30D": 30, "90D": 90, "ANO": 365}
+            await update_chart(period_map[e.data])
+
+        filter_buttons = ft.SegmentedButton(
+            on_change=filter_changed,
+            selected={"30D"},
+            segments=[
+                ft.Segment(value="7D", label=ft.Text("7d")),
+                ft.Segment(value="30D", label=ft.Text("30d")),
+                ft.Segment(value="90D", label=ft.Text("90d")),
+                ft.Segment(value="ANO", label=ft.Text("Ano")),
+            ]
+        )
+        
+        dashboard_container.controls = [
+            ft.Text(f"Olá, {user_name}!", size=24, weight=ft.FontWeight.BOLD),
+            ft.Text("Sua evolução recente:"),
+            filter_buttons,
+            chart_container
+        ]
+        
+        await update_chart(30)
 
     def build_profile_view():
         """Constrói o conteúdo da tela de perfil."""
@@ -451,7 +536,7 @@ async def main(page: ft.Page):
     # --- Gerenciador de Views ---
     async def show_view(view_to_show):
         """Gerencia qual tela é exibida ao usuário."""
-        if view_to_show == dashboard_container: build_dashboard_view()
+        if view_to_show == dashboard_container: await build_dashboard_view()
         elif view_to_show == profile_container: build_profile_view()
         elif view_to_show == onboarding_container: build_onboarding_view()
         elif view_to_show == add_workout_container: build_add_workout_view()
