@@ -1,8 +1,9 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Float, Enum, JSON
 from sqlalchemy.orm import relationship
 import datetime
 
 from .database import Base
+from .workout_types import WorkoutType
 
 class User(Base):
     __tablename__ = "users"
@@ -33,9 +34,16 @@ class Workout(Base):
     __tablename__ = "workouts"
 
     id = Column(Integer, primary_key=True, index=True)
-    distance_km = Column(Integer, nullable=False)
-    duration_minutes = Column(Integer, nullable=False)
-    elevation_level = Column(Integer, default=0)
+    workout_type = Column(Enum(WorkoutType), nullable=False) # Tipo do treino
+    details = Column(JSON, nullable=True) # Campo JSON para detalhes específicos
+    
+    # Campos comuns, agora opcionais
+    distance_km = Column(Float, nullable=True)
+    duration_minutes = Column(Integer, nullable=True)
+    
+    # Campo específico de corrida/ciclismo, agora opcional
+    elevation_level = Column(Integer, nullable=True)
+    
     workout_date = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     
     owner_id = Column(Integer, ForeignKey("users.id"))
