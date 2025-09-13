@@ -610,7 +610,7 @@ async def main(page: ft.Page):
             month_label.value = f"{calendar.month_name[month]} {year}"
             cal = calendar.monthcalendar(year, month)
             calendar_grid.controls.clear()
-            for day_name in ["D", "S", "T", "Q", "Q", "S", "S"]:
+            for day_name in ["S", "T", "Q", "Q", "S", "S", "D"]:
                 calendar_grid.controls.append(ft.Container(ft.Text(day_name, text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.BOLD)))
             for week in cal:
                 for day in week:
