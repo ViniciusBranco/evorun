@@ -477,14 +477,11 @@ async def main(page: ft.Page):
             picker_controls = []
             for name in color_names:
                 picker_controls.append(
-                    # CORREÇÃO: Usa um Container externo para centralizar um Row interno.
-                    # Isso garante que o conteúdo (círculo + texto) seja centralizado como um bloco,
-                    # mas os elementos internos (círculos) permaneçam alinhados à esquerda dentro desse bloco.
                     ft.Row(
                         alignment=ft.MainAxisAlignment.CENTER,
                         controls=[
                             ft.Container(
-                                width=200, # Largura fixa para o conteúdo
+                                width=200, 
                                 content=ft.Row(
                                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                     controls=[
@@ -675,7 +672,8 @@ async def main(page: ft.Page):
         def update_date_text(e):
             if date_picker.value: date_text.value = date_picker.value.strftime("%d/%m/%Y")
             page.update()
-        date_picker.on_change = update_date_text
+        # CORREÇÃO: O evento correto para o DatePicker é 'on_dismiss'.
+        date_picker.on_dismiss = update_date_text
         duration_field = ft.TextField(label="Duração (min)", keyboard_type=ft.KeyboardType.NUMBER, value=str(workout_data.get('duration_minutes', '')) if is_editing else "")
         distance_field = ft.TextField(label="Distância (km)", keyboard_type=ft.KeyboardType.NUMBER, value=str(workout_data.get('distance_km', '')) if is_editing else "")
         
@@ -851,20 +849,45 @@ async def main(page: ft.Page):
             current = app_state.current_calendar_date
             app_state.current_calendar_date = datetime.date(current.year, current.month, day)
             update_calendar(current.year, current.month, monthly_colors); update_workouts_list_for_date()
+        
         async def change_month(delta: int):
             nonlocal monthly_colors
             current = app_state.current_calendar_date
-            new_date = (datetime.date(current.year, current.month, 1) + datetime.timedelta(days=32 * delta)).replace(day=1)
-            _, last_day = calendar.monthrange(new_date.year, new_date.month)
-            app_state.current_calendar_date = new_date.replace(day=min(current.day, last_day))
-            monthly_colors = await _get_workout_colors_by_day(new_date.year, new_date.month)
-            update_calendar(new_date.year, new_date.month, monthly_colors); update_workouts_list_for_date()
+            
+            # Lógica aprimorada para adicionar/subtrair meses
+            new_month = current.month + delta
+            new_year = current.year
+            
+            if new_month > 12:
+                new_month = 1
+                new_year += 1
+            elif new_month < 1:
+                new_month = 12
+                new_year -= 1
+            
+            _, last_day_of_new_month = calendar.monthrange(new_year, new_month)
+            new_day = min(current.day, last_day_of_new_month)
+            
+            app_state.current_calendar_date = datetime.date(new_year, new_month, new_day)
+            
+            monthly_colors = await _get_workout_colors_by_day(new_year, new_month)
+            update_calendar(new_year, new_month, monthly_colors)
+            update_workouts_list_for_date()
+
         async def go_to_today(e):
             nonlocal monthly_colors; today = datetime.date.today(); app_state.current_calendar_date = today
             monthly_colors = await _get_workout_colors_by_day(today.year, today.month)
             update_calendar(today.year, today.month, monthly_colors); update_workouts_list_for_date()
+        
+        async def change_month_plus(e):
+            await change_month(1)
+
+        async def change_month_minus(e):
+            await change_month(-1)
+        
         async def go_to_add_workout(e): await show_view(add_workout_container)
-        workouts_container.controls = [ft.Row([ft.IconButton(ft.Icons.TODAY, on_click=go_to_today, tooltip="Hoje"), ft.Container(content=month_label, expand=True, alignment=ft.alignment.center), ft.IconButton(ft.Icons.CHEVRON_LEFT, on_click=lambda e: change_month(-1)), ft.IconButton(ft.Icons.CHEVRON_RIGHT, on_click=lambda e: change_month(1))], alignment=ft.MainAxisAlignment.CENTER), calendar_grid, ft.Divider(), ft.Row([ft.Text("Treinos do Dia", weight=ft.FontWeight.BOLD, expand=True), ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=go_to_add_workout, tooltip="Adicionar treino")]), workouts_list]
+        workouts_container.controls = [ft.Row([ft.IconButton(ft.Icons.TODAY, on_click=go_to_today, tooltip="Hoje"), ft.Container(content=month_label, expand=True, alignment=ft.alignment.center), ft.IconButton(ft.Icons.CHEVRON_LEFT, on_click=change_month_minus), ft.IconButton(ft.Icons.CHEVRON_RIGHT, on_click=change_month_plus)], alignment=ft.MainAxisAlignment.CENTER), calendar_grid, ft.Divider(), ft.Row([ft.Text("Treinos do Dia", weight=ft.FontWeight.BOLD, expand=True), ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=go_to_add_workout, tooltip="Adicionar treino")]), workouts_list]
+        
         today = app_state.current_calendar_date
         monthly_colors = await _get_workout_colors_by_day(today.year, today.month)
         update_calendar(today.year, today.month, monthly_colors); update_workouts_list_for_date()
