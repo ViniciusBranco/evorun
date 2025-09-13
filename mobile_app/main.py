@@ -681,7 +681,11 @@ async def main(page: ft.Page):
                     else:
                         description = f"{w.get('duration_minutes', 0)} min"
                         if w.get('distance_km'):
-                            description += f" / {w.get('distance_km')} km"
+                            description += f" | {w.get('distance_km')} km"
+                            if w['workout_type'] in ['running', 'cycling']:
+                                details = json.loads(w.get('details', '{}'))
+                                elevation = details.get('elevation_level', 0)
+                                description += f"\n{ (w.get('duration_minutes', 0) / w.get('distance_km')):.2f} min/km | { (w.get('distance_km') / (w.get('duration_minutes', 0) / 60)):.2f} km/h"
                     async def go_to_edit(e):
                         workout_data = e.control.data
                         build_edit_workout_view(workout_data)
