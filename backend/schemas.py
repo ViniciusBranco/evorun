@@ -1,8 +1,8 @@
 import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
 
-from .workout_types import WorkoutType
+from workout_types import WorkoutType
 
 # --- Schemas de Detalhes Específicos por Esporte ---
 
@@ -24,6 +24,10 @@ class WeightliftingDetails(BaseModel):
     sets: int
     reps: int
     weight_kg: float
+    
+class StairsDetails(BaseModel):
+    """Schema para os detalhes específicos de um treino de escada."""
+    steps: Optional[int] = None
 
 # --- Schemas de Workout Refatorados ---
 
@@ -37,10 +41,19 @@ class WorkoutBase(BaseModel):
     distance_km: Optional[float] = None
     details: Optional[Dict[str, Any]] = None
 
+    # Validador de segurança: Garante que qualquer string de workout_type
+    # seja convertida para minúsculas ANTES da validação do Pydantic.
+    # Isso torna a API robusta contra dados inconsistentes.
+    @field_validator('workout_type', mode='before')
+    @classmethod
+    def lowercase_workout_type(cls, v: Any):
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
 class WorkoutCreate(WorkoutBase):
     """
     Schema usado para criar um novo treino. Herda de WorkoutBase.
-    A validação dos 'details' é feita no endpoint.
     """
     pass
 
@@ -54,34 +67,31 @@ class WorkoutUpdate(BaseModel):
     distance_km: Optional[float] = None
     details: Optional[Dict[str, Any]] = None
 
+    # Adiciona o mesmo validador para garantir consistência na atualização.
+    @field_validator('workout_type', mode='before')
+    @classmethod
+    def lowercase_workout_type(cls, v: Any):
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
 class Workout(WorkoutBase):
     """
     Schema para a leitura de um treino (o que a API retorna).
-    Inclui campos do banco de dados como 'id' e 'owner_id'.
     """
     id: int
     owner_id: int
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
-# --- Schemas de User ---
+# --- Schemas de User (sem alterações) ---
 
 class UserBase(BaseModel):
-    """
-    Schema base para User, contendo apenas o e-mail.
-    """
     email: EmailStr
 
 class UserCreate(UserBase):
-    """
-    Schema para a criação de um novo usuário. Requer uma senha.
-    """
     password: str
 
 class User(UserBase):
-    """
-    Schema para a leitura de um usuário (o que a API retorna).
-    Inclui todos os campos do perfil e a lista de treinos associados.
-    """
     id: int
     is_active: bool
     is_superuser: bool
@@ -96,9 +106,6 @@ class User(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 class UserUpdate(BaseModel):
-    """
-    Schema para a atualização de um usuário. Todos os campos são opcionais.
-    """
     email: Optional[EmailStr] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
@@ -109,27 +116,19 @@ class UserUpdate(BaseModel):
     height_cm: Optional[int] = None
     training_days_per_week: Optional[int] = None
 
-# --- Schemas de Token e Perfil ---
+# --- Schemas de Token e Perfil (sem alterações) ---
 
 class Token(BaseModel):
-    """
-    Schema para a resposta do token de acesso no endpoint de login.
-    """
     access_token: str
     token_type: str
 
 class TokenData(BaseModel):
-    """
-    Schema para os dados contidos dentro de um JWT.
-    """
     email: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
-    """
-    Schema usado especificamente para a atualização do perfil inicial (onboarding).
-    """
     full_name: str
     age: int
     weight_kg: int
     height_cm: int
     training_days_per_week: int
+

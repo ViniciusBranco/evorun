@@ -3,7 +3,7 @@ from typing import Optional
 from jose import jwt
 from passlib.context import CryptContext
 
-from .config import settings
+from config import settings
 
 # Cria um contexto para o hashing de senhas.
 # - schemes=["bcrypt"]: Especifica que o bcrypt é o algoritmo de hashing padrão.

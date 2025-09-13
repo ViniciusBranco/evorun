@@ -14,7 +14,7 @@ import json
 
 # --- Constantes Globais ---
 # ATENÇÃO: Use 127.0.0.1 para testes locais no PC. Use o IP da rede para builds no telemóvel.
-API_URL = "http://192.168.15.120:8000" # Exemplo para build: "http://192.168.1.5:8000"
+API_URL = "http://127.0.0.1:8000" # Exemplo para build: "http://192.168.1.5:8000"
 APPBAR_BGCOLOR = ft.Colors.BLUE_800
 
 # Dicionário central para a aparência dos treinos na UI.
@@ -22,7 +22,8 @@ WORKOUT_VISUALS = {
     "running": {"icon": ft.Icons.DIRECTIONS_RUN, "color": ft.Colors.GREEN, "name": "Corrida"},
     "cycling": {"icon": ft.Icons.DIRECTIONS_BIKE, "color": ft.Colors.BROWN, "name": "Ciclismo"},
     "swimming": {"icon": ft.Icons.POOL, "color": ft.Colors.BLUE, "name": "Natação"},
-    "weightlifting": {"icon": ft.Icons.FITNESS_CENTER, "color": ft.Colors.PURPLE, "name": "Musculação"}
+    "weightlifting": {"icon": ft.Icons.FITNESS_CENTER, "color": ft.Colors.PURPLE, "name": "Musculação"},
+    "stairs": {"icon": ft.Icons.STAIRS, "color": ft.Colors.AMBER, "name": "Escada"}
 }
 
 # --- Lógica do Banco de Dados Local ---
@@ -429,11 +430,9 @@ async def main(page: ft.Page):
         """Constrói um formulário de treino dinâmico e reutilizável."""
         is_editing = workout_data is not None
         
-        # CORREÇÃO: Usar a data selecionada no calendário para novos treinos
         if is_editing and workout_data.get('workout_date'):
             initial_date = datetime.datetime.fromisoformat(workout_data['workout_date'])
         else:
-            # Para um novo treino, usar a data selecionada no calendário. Combinar com a hora atual.
             initial_date = datetime.datetime.combine(app_state.current_calendar_date, datetime.datetime.now().time())
 
         workout_type_dropdown = ft.Dropdown(
@@ -461,24 +460,33 @@ async def main(page: ft.Page):
         details = json.loads(workout_data.get('details', '{}')) if is_editing else {}
         elevation_field = ft.TextField(label="Ganho de Elevação (m)", keyboard_type=ft.KeyboardType.NUMBER, value=str(details.get('elevation_level', '')))
         pool_size_field = ft.TextField(label="Tamanho da Piscina (m)", keyboard_type=ft.KeyboardType.NUMBER, value=str(details.get('pool_size_meters', '')))
+        # Campos de musculação
         exercise_field = ft.TextField(label="Exercício", value=details.get('exercise', ''))
         sets_field = ft.TextField(label="Séries", keyboard_type=ft.KeyboardType.NUMBER, value=str(details.get('sets', '')))
         reps_field = ft.TextField(label="Repetições", keyboard_type=ft.KeyboardType.NUMBER, value=str(details.get('reps', '')))
         weight_field = ft.TextField(label="Carga Total (kg)", keyboard_type=ft.KeyboardType.NUMBER, value=str(details.get('weight_kg', '')))
+        # Campo de escada
+        steps_field = ft.TextField(label="Degraus (opcional)", keyboard_type=ft.KeyboardType.NUMBER, value=str(details.get('steps', '')))
+        
         details_container = ft.Column()
         def update_form_fields(e=None):
             selected_type = workout_type_dropdown.value
-            duration_field.visible = selected_type != "weightlifting"
+            duration_field.visible = selected_type not in ["weightlifting"]
             distance_field.visible = selected_type in ["running", "cycling", "swimming"]
             elevation_field.visible = selected_type in ["running", "cycling"]
             pool_size_field.visible = selected_type == "swimming"
-            # MOCK: Manter campos de exercício, séries e reps invisíveis
-            exercise_field.visible = False
-            sets_field.visible = False
-            reps_field.visible = False
+            exercise_field.visible = False # Manter invisível
+            sets_field.visible = False # Manter invisível
+            reps_field.visible = False # Manter invisível
             weight_field.visible = selected_type == "weightlifting"
+            steps_field.visible = selected_type == "stairs" # Apenas para escada
+            
+            # Adicionar a nova condição para a duração ficar visível em "Escada"
+            if selected_type == "stairs":
+                duration_field.visible = True
+
             details_container.controls = [
-                field for field in [elevation_field, pool_size_field, exercise_field, sets_field, reps_field, weight_field]
+                field for field in [elevation_field, pool_size_field, exercise_field, sets_field, reps_field, weight_field, steps_field]
                 if field.visible
             ]
             page.update()
@@ -492,12 +500,15 @@ async def main(page: ft.Page):
             if selected_type == "swimming": 
                 details_payload['pool_size_meters'] = int(pool_size_field.value or 50)
             if selected_type == "weightlifting":
-                # MOCK: Enviar dados fixos para exercise, sets e reps
                 details_payload = {
-                    'exercise': "Treino de Força",
-                    'sets': 1,
-                    'reps': 1,
+                    'exercise': "Treino de Força", 'sets': 1, 'reps': 1,
                     'weight_kg': float(weight_field.value or 0.0)
+                }
+            if selected_type == "stairs":
+                # Tratar valor vazio para degraus opcionais
+                steps_value = steps_field.value
+                details_payload = {
+                    'steps': int(steps_value) if steps_value else None
                 }
 
             api_payload = {
@@ -610,7 +621,7 @@ async def main(page: ft.Page):
             month_label.value = f"{calendar.month_name[month]} {year}"
             cal = calendar.monthcalendar(year, month)
             calendar_grid.controls.clear()
-            for day_name in ["S", "T", "Q", "Q", "S", "S", "D"]:
+            for day_name in ["S", "T", "Q", "Q", "S", "S", "D",]:
                 calendar_grid.controls.append(ft.Container(ft.Text(day_name, text_align=ft.TextAlign.CENTER, weight=ft.FontWeight.BOLD)))
             for week in cal:
                 for day in week:
@@ -658,9 +669,15 @@ async def main(page: ft.Page):
                     description = ""
                     if w['workout_type'] == 'weightlifting':
                         details = json.loads(w.get('details', '{}'))
-                        # MOCK: Mostrar apenas a carga total, que é o dado real inserido pelo utilizador
                         weight = details.get('weight_kg', 0.0)
                         description = f"Carga Total: {weight} kg"
+                    elif w['workout_type'] == 'stairs':
+                        details = json.loads(w.get('details', '{}'))
+                        steps = details.get('steps')
+                        if steps:
+                            description = f"{w.get('duration_minutes', 0)} min / {steps} degraus"
+                        else:
+                            description = f"{w.get('duration_minutes', 0)} min"
                     else:
                         description = f"{w.get('duration_minutes', 0)} min"
                         if w.get('distance_km'):
@@ -816,4 +833,3 @@ async def main(page: ft.Page):
 
 # --- Ponto de Entrada da Aplicação ---
 ft.app(target=main, view=ft.AppView.FLET_APP)
-

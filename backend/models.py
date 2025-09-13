@@ -2,8 +2,8 @@ from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, F
 from sqlalchemy.orm import relationship
 import datetime
 
-from .database import Base
-from .workout_types import WorkoutType
+from database import Base
+from workout_types import WorkoutType
 
 class User(Base):
     __tablename__ = "users"
@@ -25,7 +25,6 @@ class User(Base):
 
     workouts = relationship("Workout", back_populates="owner")
     
-    # Adiciona a configuração para suprimir o aviso de deleção
     __mapper_args__ = {
         "confirm_deleted_rows": False,
     }
@@ -34,22 +33,22 @@ class Workout(Base):
     __tablename__ = "workouts"
 
     id = Column(Integer, primary_key=True, index=True)
-    workout_type = Column(Enum(WorkoutType), nullable=False) # Tipo do treino
-    details = Column(JSON, nullable=True) # Campo JSON para detalhes específicos
     
-    # Campos comuns, agora opcionais
+    workout_type = Column(Enum(WorkoutType, 
+                               native_enum=False,
+                               values_callable=lambda obj: [e.value for e in obj]), 
+                          nullable=False)
+    
+    details = Column(JSON, nullable=True)
     distance_km = Column(Float, nullable=True)
     duration_minutes = Column(Integer, nullable=True)
-    
-    # Campo específico de corrida/ciclismo, agora opcional
     elevation_level = Column(Integer, nullable=True)
-    
     workout_date = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="workouts")
 
-    # Adiciona a configuração para suprimir o aviso de deleção
     __mapper_args__ = {
         "confirm_deleted_rows": False,
     }
+

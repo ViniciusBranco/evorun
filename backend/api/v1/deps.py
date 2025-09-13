@@ -3,9 +3,9 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from ... import crud, models, schemas
-from ...config import settings
-from ...database import SessionLocal
+import crud, models, schemas
+from config import settings
+from database import SessionLocal
 
 # Define o esquema de autenticação.
 # tokenUrl aponta para o nosso endpoint de login.

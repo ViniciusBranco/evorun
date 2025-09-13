@@ -2,8 +2,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from .... import crud, models, schemas
-from ..deps import get_db, get_current_active_user # 1. Importa a nova dependência
+import crud, models, schemas
+from api.v1.deps import get_db, get_current_active_user
 
 
 router = APIRouter()

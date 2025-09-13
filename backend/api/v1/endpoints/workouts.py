@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
-from .... import crud, models, schemas
+import crud, models, schemas
 from ..deps import get_current_active_user, get_db
-from ....workout_types import WorkoutType
+from workout_types import WorkoutType
 
 router = APIRouter()
 
@@ -15,6 +15,7 @@ DETAILS_SCHEMA_MAP = {
     WorkoutType.CYCLING: schemas.CyclingDetails,
     WorkoutType.SWIMMING: schemas.SwimmingDetails,
     WorkoutType.WEIGHTLIFTING: schemas.WeightliftingDetails,
+    WorkoutType.STAIRS: schemas.StairsDetails,
 }
 
 @router.post("/", response_model=schemas.Workout, status_code=status.HTTP_201_CREATED)

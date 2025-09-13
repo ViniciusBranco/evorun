@@ -2,15 +2,14 @@ import asyncio
 import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from .api.v1.endpoints import users, login, workouts
-from .database import engine
-from . import models
-
+# CORREÇÃO: As importações agora são relativas à nova estrutura
+from api.v1.endpoints import users, login, workouts
+from database import engine
+import models
 
 # Adiciona uma correção para um problema comum do asyncio no Windows
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,7 +19,6 @@ async def lifespan(app: FastAPI):
     yield
     # Código a ser executado durante o desligamento (se necessário)
     print("Aplicação encerrada.")
-
 
 # Cria uma instância da aplicação FastAPI com o gerenciador de lifespan
 app = FastAPI(
@@ -34,7 +32,6 @@ app = FastAPI(
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(login.router, prefix="/api/v1/login", tags=["login"])
 app.include_router(workouts.router, prefix="/api/v1/workouts", tags=["workouts"])
-# Todas as rotas em 'users.router', por exemplo, serão prefixadas com '/api/v1/users'
 
 # Define um endpoint para a rota raiz ("/")
 @app.get("/")

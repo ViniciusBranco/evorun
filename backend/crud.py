@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
-from . import models, schemas
-from .security import get_password_hash
-from .security import verify_password
+import models, schemas
+from security import get_password_hash
+from security import verify_password
 
 # --- Funções de Autenticação (Auth) ---
 
